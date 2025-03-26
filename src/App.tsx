@@ -1,267 +1,184 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Fab, IconButton, ThemeProvider, createTheme } from '@mui/material';
+import { Box, Fab, ThemeProvider, createTheme } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import AddIcon from '@mui/icons-material/Add';
-import Brightness4Icon from '@mui/icons-material/Brightness4';
-import Brightness7Icon from '@mui/icons-material/Brightness7';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { DragDropContext, DropResult } from 'react-beautiful-dnd';
 import Sidebar from './components/Sidebar';
 import TaskModal from './components/TaskModal';
+import AuthForm from './components/AuthForm';
 import TodayView from './components/routes/TodayView';
 import UpcomingView from './components/routes/UpcomingView';
-import Calendar from './components/Calendar';
 import TagsView from './components/routes/TagsView';
 import CompletedView from './components/routes/CompletedView';
+import CalendarView from './components/routes/CalendarView';
+import { Task, Tag } from '../types';
+import { startOfDay } from 'date-fns';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  dueDate: string;
-  completed: boolean;
-  tags: Array<{ name: string; color: string }>;
-  priority: 'low' | 'medium' | 'high';
-  order: number;
-}
+// Protected Route wrapper
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isLoading } = useAuth();
 
-interface Tag {
-  name: string;
-  color: string;
-}
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
 
-const App: React.FC = () => {
-  // Load initial state from localStorage
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    return saved ? JSON.parse(saved) : false;
-  });
+  if (!user) {
+    return <Navigate to="/auth" />;
+  }
+
+  return <>{children}</>;
+};
+
+const AppContent: React.FC = () => {
+  const { user, logout } = useAuth();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | undefined>(undefined);
-  const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    return saved ? JSON.parse(saved) : false;
-  });
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('tasks');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [tags, setTags] = useState<Tag[]>(() => {
-    const saved = localStorage.getItem('tags');
-    return saved ? JSON.parse(saved) : [
-      { name: 'Work', color: '#4CAF50' },
-      { name: 'Personal', color: '#2196F3' },
-      { name: 'Shopping', color: '#FF9800' },
-    ];
-  });
+  const [darkMode, setDarkMode] = useState(false);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tags, setTags] = useState<Tag[]>([
+    { name: 'Work', color: '#4CAF50' },
+    { name: 'Personal', color: '#2196F3' },
+    { name: 'Shopping', color: '#FF9800' },
+  ]);
 
-  // Create theme based on darkMode state
+  // Simplified theme
   const theme = createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
-      primary: {
-        main: '#4a90e2',  // Modern blue from Notion
-        light: '#6ba5e7',
-        dark: '#357abd',
-      },
-      secondary: {
-        main: '#f5f5f5',
-      },
+      primary: { main: '#4a90e2' },
       background: {
         default: darkMode ? '#1a1a1a' : '#ffffff',
-        paper: darkMode ? '#2d2d2d' : '#ffffff',
-      },
-      text: {
-        primary: darkMode ? '#ffffff' : '#333333',
-        secondary: darkMode ? '#b0b0b0' : '#666666',
       },
     },
     typography: {
-      fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
-      h1: {
-        fontWeight: 700,
-        letterSpacing: '-0.5px',
-      },
-      h2: {
-        fontWeight: 600,
-        letterSpacing: '-0.3px',
-      },
-      body1: {
-        fontSize: '0.95rem',
-        lineHeight: 1.6,
-      },
-    },
-    shape: {
-      borderRadius: 8,
-    },
-    components: {
-      MuiButton: {
-        styleOverrides: {
-          root: {
-            textTransform: 'none',
-            borderRadius: 6,
-            fontWeight: 500,
-            padding: '8px 16px',
-          },
-        },
-      },
-      MuiPaper: {
-        styleOverrides: {
-          root: {
-            backgroundImage: 'none',
-            backgroundColor: darkMode ? '#2d2d2d' : '#ffffff',
-            boxShadow: darkMode 
-              ? '0 1px 3px rgba(0,0,0,0.2), 0 1px 2px rgba(0,0,0,0.1)' 
-              : '0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.05)',
-          },
-        },
-      },
-      MuiCard: {
-        styleOverrides: {
-          root: {
-            backgroundColor: darkMode ? '#2d2d2d' : '#ffffff',
-            borderRadius: 12,
-            boxShadow: darkMode 
-              ? '0 4px 6px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08)' 
-              : '0 4px 6px rgba(0,0,0,0.05), 0 1px 3px rgba(0,0,0,0.03)',
-          },
-        },
-      },
-      MuiDrawer: {
-        styleOverrides: {
-          paper: {
-            backgroundColor: darkMode ? '#2d2d2d' : '#ffffff',
-            borderRight: darkMode ? '1px solid rgba(255, 255, 255, 0.08)' : '1px solid rgba(0, 0, 0, 0.08)',
-            boxShadow: darkMode 
-              ? '2px 0 8px rgba(0,0,0,0.1)' 
-              : '2px 0 8px rgba(0,0,0,0.05)',
-          },
-        },
-      },
-      MuiFab: {
-        styleOverrides: {
-          root: {
-            backgroundColor: '#4a90e2',
-            '&:hover': {
-              backgroundColor: '#357abd',
-            },
-            boxShadow: '0 4px 12px rgba(74, 144, 226, 0.3)',
-          },
-        },
-      },
-      MuiIconButton: {
-        styleOverrides: {
-          root: {
-            color: darkMode ? '#ffffff' : '#333333',
-            '&:hover': {
-              backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)',
-            },
-          },
-        },
-      },
+      fontFamily: '"Inter", sans-serif',
     },
   });
 
-  // Save sidebar state to localStorage
+  // Load and save state
   useEffect(() => {
-    localStorage.setItem('sidebarCollapsed', JSON.stringify(isSidebarCollapsed));
-  }, [isSidebarCollapsed]);
+    if (user) {
+      const savedTasks = localStorage.getItem(`tasks-${user.id}`);
+      const savedTags = localStorage.getItem(`tags-${user.id}`);
+      const savedDarkMode = localStorage.getItem(`darkMode-${user.id}`);
+      
+      if (savedTasks) setTasks(JSON.parse(savedTasks));
+      if (savedTags) setTags(JSON.parse(savedTags));
+      if (savedDarkMode) setDarkMode(JSON.parse(savedDarkMode));
+    }
+  }, [user]);
 
-  // Save tasks to localStorage
   useEffect(() => {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
-  }, [tasks]);
+    if (user) {
+      localStorage.setItem(`tasks-${user.id}`, JSON.stringify(tasks));
+      localStorage.setItem(`tags-${user.id}`, JSON.stringify(tags));
+      localStorage.setItem(`darkMode-${user.id}`, JSON.stringify(darkMode));
+    }
+  }, [tasks, tags, darkMode, user]);
 
-  // Save tags to localStorage
-  useEffect(() => {
-    localStorage.setItem('tags', JSON.stringify(tags));
-  }, [tags]);
-
-  // Save dark mode state to localStorage
-  useEffect(() => {
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
-  }, [darkMode]);
-
-  const handleToggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-  };
-
-  const handleToggleTask = (taskId: string) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
-        task.id === taskId ? { ...task, completed: !task.completed } : task
-      )
-    );
-  };
-
-  const handleDeleteTask = (taskId: string) => {
-    setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
-  };
-
-  const handleUpdateTask = (taskId: string, updates: Partial<Task>) => {
-    setTasks(prevTasks =>
-      prevTasks.map(task =>
-        task.id === taskId ? { ...task, ...updates } : task
-      )
-    );
-  };
-
-  const handleCreateTask = () => {
-    setEditingTask(undefined);
-    setIsTaskModalOpen(true);
-  };
-
-  const handleEditTask = (task: Task) => {
-    setEditingTask(task);
-    setIsTaskModalOpen(true);
-  };
-
-  const handleSaveTask = (taskData: Omit<Task, 'id' | 'order'>) => {
-    if (editingTask) {
-      // Update existing task
+  // Simplified task management
+  const handleTaskAction = {
+    toggle: (taskId: string) => {
       setTasks(prevTasks =>
         prevTasks.map(task =>
-          task.id === editingTask.id ? { ...taskData, id: task.id, order: task.order } : task
+          task.id === taskId ? { ...task, completed: !task.completed } : task
         )
       );
-    } else {
-      // Create new task
-      const newTask: Task = {
-        ...taskData,
-        id: Date.now().toString(),
-        order: tasks.length,
-        completed: false,
-        tags: taskData.tags || [],
-      };
-      setTasks(prevTasks => [...prevTasks, newTask]);
-    }
-    setIsTaskModalOpen(false);
-    setEditingTask(undefined);
+    },
+    delete: (taskId: string) => {
+      setTasks(prevTasks => prevTasks.filter(task => task.id !== taskId));
+    },
+    update: (taskId: string, updates: Partial<Task>) => {
+      setTasks(prevTasks =>
+        prevTasks.map(task =>
+          task.id === taskId ? { ...task, ...updates } : task
+        )
+      );
+    },
+    create: () => {
+      setEditingTask(undefined);
+      setIsTaskModalOpen(true);
+    },
+    edit: (task: Task) => {
+      setEditingTask(task);
+      setIsTaskModalOpen(true);
+    },
+    save: (taskData: Omit<Task, 'id' | 'order'>) => {
+      if (!user) return;
+
+      if (editingTask) {
+        setTasks(prevTasks =>
+          prevTasks.map(task =>
+            task.id === editingTask.id 
+              ? { 
+                  ...taskData, 
+                  id: task.id, 
+                  order: task.order,
+                  dueDate: startOfDay(taskData.dueDate),
+                  userId: user.id
+                } 
+              : task
+          )
+        );
+      } else {
+        const newTask: Task = {
+          ...taskData,
+          id: `task-${Date.now()}`,
+          order: tasks.length,
+          completed: false,
+          tags: taskData.tags || [],
+          dueDate: startOfDay(taskData.dueDate),
+          userId: user.id,
+        };
+        setTasks(prevTasks => [...prevTasks, newTask]);
+      }
+      setIsTaskModalOpen(false);
+      setEditingTask(undefined);
+    },
   };
 
-  const handleToggleDarkMode = () => {
-    setDarkMode(!darkMode);
+  const handleDragEnd = (result: DropResult) => {
+    if (!result.destination) return;
+    
+    const { source, destination } = result;
+    
+    // Only handle reordering within the same list
+    if (source.droppableId === destination.droppableId) {
+      setTasks(prevTasks => {
+        const updatedTasks = Array.from(prevTasks);
+        const [movedTask] = updatedTasks.splice(source.index, 1);
+        updatedTasks.splice(destination.index, 0, movedTask);
+        
+        // Update order based on new position
+        return updatedTasks.map((task, index) => ({
+          ...task,
+          order: index
+        }));
+      });
+    }
   };
 
   return (
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Box 
-          sx={{ 
-            display: 'flex',
-            minHeight: '100vh',
-            bgcolor: 'background.default',
-            color: 'text.primary',
-          }}
-        >
+        <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
           <Sidebar
             isCollapsed={isSidebarCollapsed}
-            onToggleCollapse={handleToggleSidebar}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            darkMode={darkMode}
+            onToggleDarkMode={() => setDarkMode(!darkMode)}
+            onLogout={logout}
+            userName={user?.name}
           />
-          <Box
-            component="main"
-            sx={{
-              flexGrow: 1,
+          
+          <Box 
+            component="main" 
+            sx={{ 
+              flexGrow: 1, 
               p: 3,
               width: { sm: `calc(100% - ${isSidebarCollapsed ? 60 : 240}px)` },
               ml: { sm: `${isSidebarCollapsed ? 60 : 240}px` },
@@ -270,116 +187,105 @@ const App: React.FC = () => {
               color: 'text.primary',
             }}
           >
-            <IconButton
-              onClick={handleToggleDarkMode}
-              sx={{
-                position: 'fixed',
-                top: 16,
-                right: 16,
-                zIndex: 1000,
-                bgcolor: 'background.paper',
-                '&:hover': {
-                  bgcolor: 'action.hover',
-                },
-              }}
-            >
-              {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
-            </IconButton>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <TodayView
-                    tasks={tasks}
-                    onToggleTask={handleToggleTask}
-                    onDeleteTask={handleDeleteTask}
-                    onUpdateTask={handleUpdateTask}
-                    onEditTask={handleEditTask}
-                  />
-                }
-              />
-              <Route
-                path="/upcoming"
-                element={
-                  <UpcomingView
-                    tasks={tasks}
-                    onToggleTask={handleToggleTask}
-                    onDeleteTask={handleDeleteTask}
-                    onUpdateTask={handleUpdateTask}
-                    onEditTask={handleEditTask}
-                  />
-                }
-              />
-              <Route
-                path="/calendar"
-                element={
-                  <Calendar
-                    tasks={tasks}
-                    onToggleTask={handleToggleTask}
-                    onDeleteTask={handleDeleteTask}
-                    onUpdateTask={handleUpdateTask}
-                    onEditTask={handleEditTask}
-                    onAddTask={(date) => {
-                      setEditingTask({
-                        id: '',
-                        title: '',
-                        dueDate: date.toISOString(),
-                        completed: false,
-                        tags: [],
-                        priority: 'low',
-                      });
-                      setIsTaskModalOpen(true);
-                    }}
-                  />
-                }
-              />
-              <Route
-                path="/tags"
-                element={
-                  <TagsView
-                    tasks={tasks}
-                    onToggleTask={handleToggleTask}
-                    onDeleteTask={handleDeleteTask}
-                    onUpdateTask={handleUpdateTask}
-                    onEditTask={handleEditTask}
-                  />
-                }
-              />
-              <Route
-                path="/completed"
-                element={
-                  <CompletedView
-                    tasks={tasks}
-                    onToggleTask={handleToggleTask}
-                    onDeleteTask={handleDeleteTask}
-                    onUpdateTask={handleUpdateTask}
-                    onEditTask={handleEditTask}
-                  />
-                }
-              />
-            </Routes>
+            <DragDropContext onDragEnd={handleDragEnd}>
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <TodayView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+                <Route
+                  path="/upcoming"
+                  element={
+                    <UpcomingView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+                <Route
+                  path="/calendar"
+                  element={
+                    <CalendarView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+                <Route
+                  path="/tags"
+                  element={
+                    <TagsView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+                <Route
+                  path="/completed"
+                  element={
+                    <CompletedView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+                <Route
+                  path="*"
+                  element={
+                    <TodayView
+                      tasks={tasks}
+                      onTaskAction={handleTaskAction}
+                    />
+                  }
+                />
+              </Routes>
+            </DragDropContext>
           </Box>
+
           <Fab
             color="primary"
             sx={{ position: 'fixed', bottom: 16, right: 16 }}
-            onClick={handleCreateTask}
+            onClick={handleTaskAction.create}
           >
             <AddIcon />
           </Fab>
+
           <TaskModal
             open={isTaskModalOpen}
             onClose={() => {
               setIsTaskModalOpen(false);
               setEditingTask(undefined);
             }}
-            onSubmit={handleSaveTask}
-            editingTask={editingTask}
+            onSubmit={handleTaskAction.save}
+            initialTask={editingTask}
             tags={tags}
-            projects={[]}
           />
         </Box>
       </LocalizationProvider>
     </ThemeProvider>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <Routes>
+        <Route path="/auth" element={<AuthForm />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <AppContent />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+    </AuthProvider>
   );
 };
 

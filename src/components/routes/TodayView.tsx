@@ -1,54 +1,34 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
+import { isToday, startOfDay } from 'date-fns';
 import TaskList from '../TaskList';
-import { format, isToday } from 'date-fns';
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  dueDate: string;
-  completed: boolean;
-  tags: Array<{ name: string; color: string }>;
-  project?: string;
-}
+import { Task } from '../../types';
 
 interface TodayViewProps {
   tasks: Task[];
-  onToggleTask: (taskId: string) => void;
-  onDeleteTask: (taskId: string) => void;
-  onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
-  onEditTask: (task: Task) => void;
+  onTaskAction: {
+    toggle: (taskId: string) => void;
+    delete: (taskId: string) => void;
+    update: (taskId: string, updates: Partial<Task>) => void;
+    edit: (task: Task) => void;
+  };
 }
 
-const TodayView: React.FC<TodayViewProps> = ({
-  tasks,
-  onToggleTask,
-  onDeleteTask,
-  onUpdateTask,
-  onEditTask,
-}) => {
-  const today = new Date();
-  const todaysTasks = tasks.filter(task => {
-    const taskDate = new Date(task.dueDate);
-    return isToday(taskDate) && !task.completed;
+const TodayView: React.FC<TodayViewProps> = ({ tasks, onTaskAction }) => {
+  const todayTasks = tasks.filter(task => {
+    if (!task.dueDate) return false;
+    return isToday(startOfDay(new Date(task.dueDate)));
   });
 
   return (
-    <Box sx={{ my: 4 }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Today
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        {format(today, 'EEEE, MMMM d')}
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Today's Tasks
       </Typography>
       <TaskList
-        tasks={todaysTasks}
-        onToggleTask={onToggleTask}
-        onDeleteTask={onDeleteTask}
-        onUpdateTask={onUpdateTask}
-        onEditTask={onEditTask}
-        draggable={false}
+        tasks={todayTasks}
+        onTaskAction={onTaskAction}
+        draggable
       />
     </Box>
   );

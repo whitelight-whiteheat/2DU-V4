@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Button, ButtonGroup, Typography, CircularProgress } from '@mui/material';
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, Firestore } from 'firebase/firestore';
+import { DragDropContext, DropResult } from 'react-beautiful-dnd';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import TaskList from './TaskList';
 import TaskModal from './TaskModal';
@@ -19,15 +19,9 @@ interface Task {
   order: number;
 }
 
-interface CalendarProps {
-  tasks: Task[];
-  onDateSelect: (date: Date | null) => void;
-}
-
 const TaskManager: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -184,24 +178,41 @@ const TaskManager: React.FC = () => {
     }
   };
 
-  const handleDragEnd = async (result: any) => {
+  const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
 
-    const items = Array.from(tasks);
-    const [reorderedItem] = items.splice(result.source.index, 1);
-    items.splice(result.destination.index, 0, reorderedItem);
+    const { source, destination } = result;
+    const sourceIndex = source.index;
+    const destinationIndex = destination.index;
 
-    setTasks(items);
+    // Only handle reordering within the same list
+    if (source.droppableId === destination.droppableId) {
+      const items = Array.from(tasks);
+      const [reorderedItem] = items.splice(sourceIndex, 1);
+      items.splice(destinationIndex, 0, reorderedItem);
 
-    // Update order in Firebase
-    try {
-      const batch = items.map((task, index) => {
-        const taskRef = doc(db, 'tasks', task.id);
-        return updateDoc(taskRef, { order: index });
-      });
-      await Promise.all(batch);
-    } catch (error) {
-      console.error('Error updating task order:', error);
+      // Update local state immediately for smooth UI
+      setTasks(items);
+
+      // Update order in Firebase
+      try {
+        const batch = items.map((task, index) => {
+          const taskRef = doc(db, 'tasks', task.id);
+          return updateDoc(taskRef, { order: index });
+        });
+        await Promise.all(batch);
+      } catch (error) {
+        console.error('Error updating task order:', error);
+        // Revert to original order if update fails
+        const tasksCollection = collection(db, 'tasks');
+        const tasksQuery = query(tasksCollection, orderBy('order'));
+        const querySnapshot = await getDocs(tasksQuery);
+        const loadedTasks = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Task));
+        setTasks(loadedTasks);
+      }
     }
   };
 
@@ -235,84 +246,102 @@ const TaskManager: React.FC = () => {
   }
 
   return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h4" component="h1">
-          Tasks
-        </Typography>
-        <Box>
-          <ButtonGroup variant="contained" sx={{ mb: 2 }}>
+    <DragDropContext onDragEnd={handleDragEnd}>
+      <Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+          <Typography variant="h4" component="h1">
+            Tasks
+          </Typography>
+          <Box>
+            <ButtonGroup variant="contained" sx={{ mb: 2 }}>
+              <Button
+                onClick={() => setView('list')}
+                color={view === 'list' ? 'primary' : 'inherit'}
+              >
+                List View
+              </Button>
+              <Button
+                onClick={() => setView('calendar')}
+                color={view === 'calendar' ? 'primary' : 'inherit'}
+              >
+                Calendar View
+              </Button>
+            </ButtonGroup>
             <Button
-              onClick={() => setView('list')}
-              color={view === 'list' ? 'primary' : 'inherit'}
+              variant="contained"
+              color="primary"
+              onClick={() => setIsModalOpen(true)}
             >
-              List View
+              Add Task
             </Button>
-            <Button
-              onClick={() => setView('calendar')}
-              color={view === 'calendar' ? 'primary' : 'inherit'}
-            >
-              Calendar View
-            </Button>
-          </ButtonGroup>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => setIsModalOpen(true)}
-          >
-            Add Task
-          </Button>
+          </Box>
         </Box>
+
+        {error && (
+          <Typography color="error" sx={{ mb: 2 }}>
+            {error}
+          </Typography>
+        )}
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : view === 'list' ? (
+          <TaskList
+            tasks={tasks}
+            onTaskAction={{
+              toggle: toggleTask,
+              delete: deleteTask,
+              update: updateTask,
+              edit: (task: Task) => {
+                setSelectedTask(task);
+                setIsModalOpen(true);
+              }
+            }}
+            draggable
+          />
+        ) : (
+          <Calendar
+            tasks={tasks}
+            onToggleTask={toggleTask}
+            onDeleteTask={deleteTask}
+            onEditTask={(task: Task) => {
+              setSelectedTask(task);
+              setIsModalOpen(true);
+            }}
+            onAddTask={(date: Date) => {
+              setSelectedTask({
+                id: '',
+                title: '',
+                description: '',
+                dueDate: date.toISOString(),
+                completed: false,
+                tags: [],
+                priority: 'medium',
+                order: tasks.length
+              });
+              setIsModalOpen(true);
+            }}
+          />
+        )}
+
+        <TaskModal
+          open={isModalOpen}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedTask(null);
+          }}
+          onSubmit={addTask}
+          initialTask={selectedTask}
+          tags={[
+            { name: 'Work', color: '#4CAF50' },
+            { name: 'Personal', color: '#2196F3' },
+            { name: 'Shopping', color: '#FF9800' },
+          ]}
+        />
       </Box>
-
-      {error && (
-        <Typography color="error" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
-      )}
-
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-          <CircularProgress />
-        </Box>
-      ) : view === 'list' ? (
-        <TaskList
-          tasks={tasks}
-          onToggleTask={toggleTask}
-          onDeleteTask={deleteTask}
-          onUpdateTask={updateTask}
-          onEditTask={(task) => {
-            setSelectedTask(task);
-            setIsModalOpen(true);
-          }}
-          draggable={true}
-        />
-      ) : (
-        <Calendar
-          tasks={tasks}
-          onToggleTask={toggleTask}
-          onDeleteTask={deleteTask}
-          onEditTask={(task: Task) => {
-            setSelectedTask(task);
-            setIsModalOpen(true);
-          }}
-          onAddTask={(date: Date) => {
-            setSelectedDate(date);
-            setIsModalOpen(true);
-          }}
-        />
-      )}
-
-      <TaskModal
-        open={isModalOpen}
-        onClose={() => {
-          setIsModalOpen(false);
-          setSelectedTask(null);
-        }}
-        onSubmit={addTask}
-        initialTask={selectedTask}
-      />
-    </Box>
+    </DragDropContext>
   );
 };
 

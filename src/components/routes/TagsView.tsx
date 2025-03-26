@@ -1,102 +1,63 @@
-import React, { useState, useEffect } from 'react';
-import { Box, Typography, Chip, Stack, Paper } from '@mui/material';
-import { useLocation } from 'react-router-dom';
+import React from 'react';
+import { Box, Typography, Chip, Stack } from '@mui/material';
 import TaskList from '../TaskList';
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  dueDate: string;
-  completed: boolean;
-  tags: Array<{ name: string; color: string }>;
-  project?: string;
-  priority: 'low' | 'medium' | 'high';
-  order: number;
-}
+import { Task, Tag } from '../../types';
 
 interface TagsViewProps {
   tasks: Task[];
-  onToggleTask: (taskId: string) => void;
-  onDeleteTask: (taskId: string) => void;
-  onUpdateTask: (taskId: string, updates: Partial<Task>) => void;
-  onEditTask: (task: Task) => void;
+  onTaskAction: {
+    toggle: (taskId: string) => void;
+    delete: (taskId: string) => void;
+    update: (taskId: string, updates: Partial<Task>) => void;
+    edit: (task: Task) => void;
+  };
 }
 
-const TagsView: React.FC<TagsViewProps> = ({
-  tasks,
-  onToggleTask,
-  onDeleteTask,
-  onUpdateTask,
-  onEditTask,
-}) => {
-  const location = useLocation();
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
-
-  // Set selected tag from navigation state when component mounts
-  useEffect(() => {
-    const tagFromState = location.state?.selectedTag;
-    if (tagFromState) {
-      setSelectedTag(tagFromState);
-    }
-  }, [location.state]);
-
-  // Get all unique tags
+const TagsView: React.FC<TagsViewProps> = ({ tasks, onTaskAction }) => {
+  // Get all unique tags from tasks
   const allTags = Array.from(
-    new Set(
-      tasks.flatMap(task => task.tags.map(tag => tag.name))
-    )
-  );
-
-  // Get tasks for selected tag
-  const tasksForTag = selectedTag
-    ? tasks.filter(task => task.tags.some(tag => tag.name === selectedTag))
-    : [];
+    new Set(tasks.flatMap(task => task.tags.map(tag => tag.name)))
+  ).map(name => {
+    const tag = tasks.find(task => 
+      task.tags.find(t => t.name === name)
+    )?.tags.find(t => t.name === name);
+    return { name, color: tag?.color || '#1976d2' };
+  });
 
   return (
-    <Box sx={{ my: 4 }}>
-      <Typography variant="h4" component="h1" gutterBottom>
-        Tags
+    <Box>
+      <Typography variant="h4" gutterBottom>
+        Tasks by Tag
       </Typography>
-      
-      <Stack direction="row" spacing={1} sx={{ mb: 3 }} flexWrap="wrap" gap={1}>
-        {allTags.map(tag => (
-          <Chip
-            key={tag}
-            label={tag}
-            onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-            color={tag === selectedTag ? 'primary' : 'default'}
-            sx={{ 
-              m: 0.5,
-              cursor: 'pointer',
-              '&:hover': {
-                opacity: 0.9,
-              },
-            }}
-          />
-        ))}
+      <Stack spacing={4}>
+        {allTags.map(tag => {
+          const tagTasks = tasks.filter(task => 
+            task.tags.some(t => t.name === tag.name)
+          );
+          return (
+            <Box key={tag.name}>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                <Chip
+                  label={tag.name}
+                  size="large"
+                  sx={{ 
+                    backgroundColor: tag.color, 
+                    color: 'white',
+                    mr: 2,
+                  }}
+                />
+                <Typography variant="subtitle1" color="text.secondary">
+                  {tagTasks.length} tasks
+                </Typography>
+              </Box>
+              <TaskList
+                tasks={tagTasks}
+                onTaskAction={onTaskAction}
+              />
+            </Box>
+          );
+        })}
       </Stack>
-
-      {selectedTag ? (
-        <>
-          <Typography variant="h6" gutterBottom>
-            Tasks with tag "{selectedTag}"
-          </Typography>
-          <TaskList
-            tasks={tasksForTag}
-            onToggle={onToggleTask}
-            onDelete={onDeleteTask}
-            onUpdate={onUpdateTask}
-            onEditTask={onEditTask}
-          />
-        </>
-      ) : (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography color="text.secondary">
-            Select a tag to view associated tasks
-          </Typography>
-        </Paper>
-      )}
     </Box>
   );
 };
