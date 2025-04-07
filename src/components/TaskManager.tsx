@@ -1,160 +1,135 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Button, ButtonGroup, Typography, CircularProgress } from '@mui/material';
+import { Box, Button, ButtonGroup, Typography, CircularProgress, Tabs, Tab, IconButton } from '@mui/material';
 import { DragDropContext, DropResult } from 'react-beautiful-dnd';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import TaskList from './TaskList';
 import TaskModal from './TaskModal';
+import ShareTaskModal from './ShareTaskModal';
 import Calendar from './Calendar';
+import CategoryManager from './CategoryManager';
+import { Task, Category, Tag, SharedUser } from '../types';
+import SettingsIcon from '@mui/icons-material/Settings';
+import ShareIcon from '@mui/icons-material/Share';
 
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  dueDate: string;
-  completed: boolean;
-  tags: Array<{ name: string; color: string }>;
-  project?: string;
-  priority: 'low' | 'medium' | 'high';
-  order: number;
-}
+// Default tags if none are found in the database
+const DEFAULT_TAGS: Tag[] = [
+  { id: '1', name: 'Work', color: '#4CAF50' },
+  { id: '2', name: 'Personal', color: '#2196F3' },
+  { id: '3', name: 'Shopping', color: '#FF9800' },
+  { id: '4', name: 'Urgent', color: '#f44336' },
+  { id: '5', name: 'Important', color: '#9c27b0' },
+];
 
 const TaskManager: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isCategoryManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [view, setView] = useState<'list' | 'calendar'>('list');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Load tasks from Firebase
+  // Load tasks, categories, and tags from Firebase
   useEffect(() => {
-    const loadTasks = async () => {
+    const loadData = async () => {
       try {
-        console.log('TaskManager: Starting to load tasks from Firebase...');
-        console.log('TaskManager: Current tasks state:', tasks);
+        setLoading(true);
+        setError(null);
+
+        // Load categories
+        const categoriesCollection = collection(db, 'categories');
+        const categoriesQuery = query(categoriesCollection, orderBy('order'));
+        const categoriesSnapshot = await getDocs(categoriesQuery);
+        const loadedCategories = categoriesSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Category));
+        setCategories(loadedCategories);
+
+        // Load tags
+        const tagsCollection = collection(db, 'tags');
+        const tagsSnapshot = await getDocs(tagsCollection);
+        const loadedTags = tagsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Tag));
         
-        // Verify Firebase connection
-        if (!db) {
-          console.error('TaskManager: Firebase database not initialized');
-          throw new Error('Firebase database not initialized');
+        // Only use default tags if no tags are found in the database
+        if (loadedTags.length > 0) {
+          setTags(loadedTags);
         }
-        
-        console.log('TaskManager: Getting tasks collection reference...');
+
+        // Load tasks
         const tasksCollection = collection(db, 'tasks');
-        
-        console.log('TaskManager: Creating query...');
         const tasksQuery = query(tasksCollection, orderBy('order'));
-        
-        console.log('TaskManager: Executing query...');
-        const querySnapshot = await getDocs(tasksQuery);
-        console.log('TaskManager: Query executed successfully. Number of documents:', querySnapshot.size);
-        
-        const loadedTasks = querySnapshot.docs.map(doc => {
-          const data = doc.data();
-          console.log('TaskManager: Processing document:', { id: doc.id, data });
-          return {
-            id: doc.id,
-            ...data
-          } as Task;
-        });
-        
-        console.log('TaskManager: All tasks loaded successfully:', loadedTasks);
+        const tasksSnapshot = await getDocs(tasksQuery);
+        const loadedTasks = tasksSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as Task));
         setTasks(loadedTasks);
       } catch (error) {
-        console.error('TaskManager: Error in loadTasks:', error);
-        if (error instanceof Error) {
-          console.error('TaskManager: Error details:', {
-            message: error.message,
-            stack: error.stack
-          });
-        }
+        console.error('Error loading data:', error);
+        setError('Failed to load data');
       } finally {
-        console.log('TaskManager: Setting loading state to false');
         setLoading(false);
       }
     };
 
-    console.log('TaskManager: loadTasks effect triggered');
-    loadTasks();
-  }, []); // Empty dependency array means this runs once on mount
+    loadData();
+  }, []);
 
   const addTask = async (newTask: Omit<Task, 'id' | 'order'>) => {
     try {
       setError(null);
-      console.log('TaskManager: Starting task creation process...');
-      console.log('TaskManager: New task data received:', newTask);
       
       if (!newTask.title.trim()) {
         setError('Title is required');
-        console.error('TaskManager: Title is required');
         return;
       }
       
       const order = tasks.length;
-      console.log('TaskManager: Calculated order:', order);
       
-      // Set default values for required fields
       const taskData: Omit<Task, 'id'> = {
-        title: newTask.title.trim(),
-        description: '',
-        dueDate: new Date().toISOString(), // Set to today by default
-        priority: 'medium' as const,
-        completed: false,
-        tags: [],
-        order
+        ...newTask,
+        order,
+        createdAt: new Date(),
+        updatedAt: new Date()
       };
-      console.log('TaskManager: Prepared task data:', taskData);
-      
-      if (!db) {
-        setError('Database connection error');
-        console.error('TaskManager: Firebase database not initialized');
-        throw new Error('Firebase database not initialized');
-      }
       
       const tasksCollection = collection(db, 'tasks');
-      console.log('TaskManager: Got tasks collection reference');
-      
-      console.log('TaskManager: Attempting to add document to Firestore...');
       const docRef = await addDoc(tasksCollection, taskData);
-      console.log('TaskManager: Document added successfully with ID:', docRef.id);
       
       const newTaskWithId: Task = { ...taskData, id: docRef.id };
-      console.log('TaskManager: Created new task object with ID:', newTaskWithId);
+      setTasks(prevTasks => [...prevTasks, newTaskWithId]);
       
-      console.log('TaskManager: Updating local state...');
-      setTasks(prevTasks => {
-        console.log('TaskManager: Previous tasks state:', prevTasks);
-        const updatedTasks = [...prevTasks, newTaskWithId];
-        console.log('TaskManager: New tasks state:', updatedTasks);
-        return updatedTasks;
-      });
-      
-      console.log('TaskManager: Closing modal...');
       setIsModalOpen(false);
       setSelectedTask(null);
-      console.log('TaskManager: Task creation process completed successfully');
     } catch (error) {
-      console.error('TaskManager: Error in addTask:', error);
-      if (error instanceof Error) {
-        setError(error.message);
-        console.error('TaskManager: Error details:', {
-          message: error.message,
-          stack: error.stack
-        });
-      }
+      console.error('Error adding task:', error);
+      setError('Failed to add task');
     }
   };
 
   const handleTaskUpdate = async (taskId: string, updates: Partial<Task>) => {
     try {
       const taskRef = doc(db, 'tasks', taskId);
-      await updateDoc(taskRef, updates);
+      const updateData = {
+        ...updates,
+        updatedAt: new Date()
+      };
+      await updateDoc(taskRef, updateData);
       setTasks(prevTasks => 
         prevTasks.map(t => t.id === taskId ? { ...t, ...updates } : t)
       );
     } catch (error) {
       console.error('Error updating task:', error);
+      setError('Failed to update task');
     }
   };
 
@@ -175,6 +150,7 @@ const TaskManager: React.FC = () => {
       setTasks(prevTasks => prevTasks.filter(t => t.id !== taskId));
     } catch (error) {
       console.error('Error deleting task:', error);
+      setError('Failed to delete task');
     }
   };
 
@@ -185,16 +161,13 @@ const TaskManager: React.FC = () => {
     const sourceIndex = source.index;
     const destinationIndex = destination.index;
 
-    // Only handle reordering within the same list
     if (source.droppableId === destination.droppableId) {
       const items = Array.from(tasks);
       const [reorderedItem] = items.splice(sourceIndex, 1);
       items.splice(destinationIndex, 0, reorderedItem);
 
-      // Update local state immediately for smooth UI
       setTasks(items);
 
-      // Update order in Firebase
       try {
         const batch = items.map((task, index) => {
           const taskRef = doc(db, 'tasks', task.id);
@@ -203,7 +176,8 @@ const TaskManager: React.FC = () => {
         await Promise.all(batch);
       } catch (error) {
         console.error('Error updating task order:', error);
-        // Revert to original order if update fails
+        setError('Failed to update task order');
+        // Reload tasks to ensure correct order
         const tasksCollection = collection(db, 'tasks');
         const tasksQuery = query(tasksCollection, orderBy('order'));
         const querySnapshot = await getDocs(tasksQuery);
@@ -216,26 +190,33 @@ const TaskManager: React.FC = () => {
     }
   };
 
-  // Add a new effect to reload tasks when the modal is closed
-  useEffect(() => {
-    if (!isModalOpen) {
-      const loadTasks = async () => {
-        try {
-          const tasksCollection = collection(db, 'tasks');
-          const tasksQuery = query(tasksCollection, orderBy('order'));
-          const querySnapshot = await getDocs(tasksQuery);
-          const loadedTasks = querySnapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-          } as Task));
-          setTasks(loadedTasks);
-        } catch (error) {
-          console.error('Error reloading tasks:', error);
-        }
+  const handleShareTask = async (taskId: string, sharedUsers: SharedUser[]) => {
+    try {
+      const taskRef = doc(db, 'tasks', taskId);
+      const updateData = {
+        sharedWith: sharedUsers,
+        isShared: sharedUsers.length > 0,
+        lastSharedAt: new Date(),
+        updatedAt: new Date()
       };
-      loadTasks();
+      await updateDoc(taskRef, updateData);
+      setTasks(prevTasks => 
+        prevTasks.map(t => t.id === taskId ? { ...t, ...updateData } : t)
+      );
+    } catch (error) {
+      console.error('Error sharing task:', error);
+      setError('Failed to share task');
     }
-  }, [isModalOpen]);
+  };
+
+  const handleShareClick = (task: Task) => {
+    setSelectedTask(task);
+    setIsShareModalOpen(true);
+  };
+
+  const filteredTasks = selectedCategory
+    ? tasks.filter(task => task.categoryId === selectedCategory)
+    : tasks;
 
   if (loading) {
     return (
@@ -248,33 +229,50 @@ const TaskManager: React.FC = () => {
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <Box>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4" component="h1">
-            Tasks
-          </Typography>
-          <Box>
-            <ButtonGroup variant="contained" sx={{ mb: 2 }}>
-              <Button
-                onClick={() => setView('list')}
-                color={view === 'list' ? 'primary' : 'inherit'}
-              >
-                List View
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+          <Tabs value={view} onChange={(_, newValue) => setView(newValue)}>
+            <Tab label="List View" value="list" />
+            <Tab label="Calendar View" value="calendar" />
+          </Tabs>
+        </Box>
+
+        <Box sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <ButtonGroup variant="outlined">
+              <Button onClick={() => setSelectedCategory(null)}>
+                All Tasks
               </Button>
-              <Button
-                onClick={() => setView('calendar')}
-                color={view === 'calendar' ? 'primary' : 'inherit'}
-              >
-                Calendar View
-              </Button>
+              {categories.map(category => (
+                <Button
+                  key={category.id}
+                  onClick={() => setSelectedCategory(category.id)}
+                  sx={{
+                    backgroundColor: selectedCategory === category.id ? category.color : 'transparent',
+                    color: selectedCategory === category.id ? 'white' : 'inherit',
+                  }}
+                >
+                  {category.name}
+                </Button>
+              ))}
             </ButtonGroup>
-            <Button
-              variant="contained"
-              color="primary"
-              onClick={() => setIsModalOpen(true)}
+            <IconButton
+              onClick={() => setIsCategoryManagerOpen(true)}
+              title="Manage Categories"
             >
-              Add Task
-            </Button>
+              <SettingsIcon />
+            </IconButton>
           </Box>
+
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => {
+              setSelectedTask(null);
+              setIsModalOpen(true);
+            }}
+          >
+            Add New Task
+          </Button>
         </Box>
 
         {error && (
@@ -283,46 +281,31 @@ const TaskManager: React.FC = () => {
           </Typography>
         )}
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
-            <CircularProgress />
-          </Box>
-        ) : view === 'list' ? (
+        {view === 'list' ? (
           <TaskList
-            tasks={tasks}
+            tasks={filteredTasks}
+            onTaskClick={(task) => {
+              setSelectedTask(task);
+              setIsModalOpen(true);
+            }}
+            onTaskToggle={toggleTask}
+            onTaskDelete={deleteTask}
             onTaskAction={{
               toggle: toggleTask,
               delete: deleteTask,
-              update: updateTask,
-              edit: (task: Task) => {
-                setSelectedTask(task);
-                setIsModalOpen(true);
-              }
+              update: handleTaskUpdate,
+              edit: handleTaskUpdate,
+              share: handleShareClick,
             }}
             draggable
           />
         ) : (
           <Calendar
-            tasks={tasks}
+            tasks={filteredTasks}
             onToggleTask={toggleTask}
             onDeleteTask={deleteTask}
-            onEditTask={(task: Task) => {
-              setSelectedTask(task);
-              setIsModalOpen(true);
-            }}
-            onAddTask={(date: Date) => {
-              setSelectedTask({
-                id: '',
-                title: '',
-                description: '',
-                dueDate: date.toISOString(),
-                completed: false,
-                tags: [],
-                priority: 'medium',
-                order: tasks.length
-              });
-              setIsModalOpen(true);
-            }}
+            onEditTask={handleTaskUpdate}
+            onShareTask={handleShareClick}
           />
         )}
 
@@ -332,13 +315,27 @@ const TaskManager: React.FC = () => {
             setIsModalOpen(false);
             setSelectedTask(null);
           }}
-          onSubmit={addTask}
+          onSubmit={selectedTask ? handleTaskUpdate : addTask}
           initialTask={selectedTask}
-          tags={[
-            { name: 'Work', color: '#4CAF50' },
-            { name: 'Personal', color: '#2196F3' },
-            { name: 'Shopping', color: '#FF9800' },
-          ]}
+          tags={tags}
+          categories={categories}
+        />
+
+        <ShareTaskModal
+          open={isShareModalOpen}
+          onClose={() => {
+            setIsShareModalOpen(false);
+            setSelectedTask(null);
+          }}
+          task={selectedTask!}
+          onShare={handleShareTask}
+        />
+
+        <CategoryManager
+          open={isCategoryManagerOpen}
+          onClose={() => setIsCategoryManagerOpen(false)}
+          categories={categories}
+          onCategoriesChange={setCategories}
         />
       </Box>
     </DragDropContext>

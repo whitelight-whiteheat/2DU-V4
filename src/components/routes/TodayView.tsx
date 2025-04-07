@@ -11,6 +11,7 @@ interface TodayViewProps {
     delete: (taskId: string) => void;
     update: (taskId: string, updates: Partial<Task>) => void;
     edit: (task: Task) => void;
+    share: (task: Task) => void;
   };
 }
 
@@ -27,7 +28,13 @@ const TodayView: React.FC<TodayViewProps> = ({ tasks, onTaskAction }) => {
       </Typography>
       <TaskList
         tasks={todayTasks}
-        onTaskAction={onTaskAction}
+        onTaskAction={{
+          toggle: onTaskAction.toggle,
+          delete: onTaskAction.delete,
+          update: onTaskAction.update,
+          edit: onTaskAction.edit,
+          share: onTaskAction.share
+        }}
         draggable
       />
     </Box>

@@ -1,3 +1,10 @@
+export interface SharedUser {
+  userId: string;
+  email: string;
+  role: 'viewer' | 'editor';
+  sharedAt: Date;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -7,6 +14,41 @@ export interface Task {
   tags: string[];
   order: number;
   userId: string;
+  categoryId?: string;
+  priority: 'low' | 'medium' | 'high';
+  subtasks: Subtask[];
+  reminder?: Date;
+  notes?: string;
+  attachments?: Attachment[];
+  createdAt: Date;
+  updatedAt: Date;
+  sharedWith?: SharedUser[];
+  isShared?: boolean;
+  lastSharedAt?: Date;
+}
+
+export interface Subtask {
+  id: string;
+  title: string;
+  completed: boolean;
+  order: number;
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  url: string;
+  type: string;
+  size: number;
+  uploadedAt: Date;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  userId: string;
+  order: number;
 }
 
 export interface Tag {
@@ -19,4 +61,12 @@ export interface User {
   email: string;
   password: string; // In a real app, this would be hashed
   name: string;
+  preferences: UserPreferences;
+}
+
+export interface UserPreferences {
+  theme: 'light' | 'dark' | 'system';
+  highContrast: boolean;
+  notifications: boolean;
+  defaultView: 'today' | 'upcoming' | 'calendar' | 'tags';
 } 

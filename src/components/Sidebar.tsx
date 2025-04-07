@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Drawer,
   List,
@@ -22,8 +22,10 @@ import {
   LocalOffer as TagIcon,
   CheckCircle as CompletedIcon,
   Logout as LogoutIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useI18n } from '../contexts/I18nContext';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -45,14 +47,35 @@ const Sidebar: React.FC<SidebarProps> = ({
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const { t } = useI18n();
+
+  console.log('Sidebar rendering with props:', {
+    isCollapsed,
+    darkMode,
+    userName,
+    currentPath: location.pathname,
+  });
 
   const menuItems = [
-    { text: "Today's Tasks", icon: <InboxIcon />, path: "/" },
-    { text: "Upcoming", icon: <EventIcon />, path: "/upcoming" },
-    { text: "Calendar", icon: <CalendarIcon />, path: "/calendar" },
-    { text: "Tags", icon: <TagIcon />, path: "/tags" },
-    { text: "Completed", icon: <CompletedIcon />, path: "/completed" },
+    { text: t('sidebar.today'), icon: <InboxIcon />, path: "/" },
+    { text: t('sidebar.upcoming'), icon: <EventIcon />, path: "/upcoming" },
+    { text: t('sidebar.calendar'), icon: <CalendarIcon />, path: "/calendar" },
+    { text: t('sidebar.tags'), icon: <TagIcon />, path: "/tags" },
+    { text: t('sidebar.completed'), icon: <CompletedIcon />, path: "/completed" },
+    { text: t('sidebar.settings'), icon: <SettingsIcon />, path: "/settings" },
   ];
+
+  useEffect(() => {
+    console.log('Sidebar translations:', {
+      today: t('sidebar.today'),
+      upcoming: t('sidebar.upcoming'),
+      calendar: t('sidebar.calendar'),
+      tags: t('sidebar.tags'),
+      completed: t('sidebar.completed'),
+      settings: t('sidebar.settings'),
+      welcome: t('sidebar.welcome', { userName: userName || t('sidebar.user') }),
+    });
+  }, [t, userName]);
 
   return (
     <Drawer
@@ -91,7 +114,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       {!isCollapsed && (
         <Box sx={{ p: 2 }}>
           <Typography variant="subtitle1" color="text.secondary">
-            Welcome, {userName || 'User'}
+            {t('sidebar.welcome', { userName: userName || t('sidebar.user') })}
           </Typography>
         </Box>
       )}
@@ -99,34 +122,80 @@ const Sidebar: React.FC<SidebarProps> = ({
         {menuItems.map((item) => (
           <ListItem
             button
-            key={item.text}
+            key={item.path}
             onClick={() => navigate(item.path)}
             selected={location.pathname === item.path}
             sx={{
+              minHeight: 48,
+              justifyContent: isCollapsed ? 'center' : 'initial',
+              px: 2.5,
               '&.Mui-selected': {
-                bgcolor: 'primary.light',
-                color: 'primary.contrastText',
+                bgcolor: 'action.selected',
                 '&:hover': {
-                  bgcolor: 'primary.main',
+                  bgcolor: 'action.selected',
                 },
               },
             }}
           >
-            <ListItemIcon sx={{ color: 'inherit' }}>
+            <ListItemIcon
+              sx={{
+                minWidth: 0,
+                mr: isCollapsed ? 0 : 2,
+                justifyContent: 'center',
+              }}
+            >
               {item.icon}
             </ListItemIcon>
             {!isCollapsed && <ListItemText primary={item.text} />}
           </ListItem>
         ))}
       </List>
-      <Box sx={{ mt: 'auto', p: 1 }}>
-        <IconButton onClick={onToggleDarkMode} sx={{ mb: 1 }}>
-          {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
-        </IconButton>
-        <IconButton onClick={onLogout}>
-          <LogoutIcon />
-        </IconButton>
-      </Box>
+      <Box sx={{ flexGrow: 1 }} />
+      <Divider />
+      <List>
+        <ListItem
+          button
+          onClick={onToggleDarkMode}
+          sx={{
+            minHeight: 48,
+            justifyContent: isCollapsed ? 'center' : 'initial',
+            px: 2.5,
+          }}
+        >
+          <ListItemIcon
+            sx={{
+              minWidth: 0,
+              mr: isCollapsed ? 0 : 2,
+              justifyContent: 'center',
+            }}
+          >
+            {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+          </ListItemIcon>
+          {!isCollapsed && (
+            <ListItemText primary={darkMode ? 'Light Mode' : 'Dark Mode'} />
+          )}
+        </ListItem>
+        <ListItem
+          button
+          onClick={onLogout}
+          sx={{
+            minHeight: 48,
+            justifyContent: isCollapsed ? 'center' : 'initial',
+            px: 2.5,
+          }}
+        >
+          <ListItemIcon
+            sx={{
+              minWidth: 0,
+              mr: isCollapsed ? 0 : 2,
+              justifyContent: 'center',
+            }}
+          >
+            <LogoutIcon />
+          </ListItemIcon>
+          {!isCollapsed && <ListItemText primary="Logout" />}
+        </ListItem>
+      </List>
     </Drawer>
   );
 };

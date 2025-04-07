@@ -10,6 +10,7 @@ interface TagsViewProps {
     delete: (taskId: string) => void;
     update: (taskId: string, updates: Partial<Task>) => void;
     edit: (task: Task) => void;
+    share: (task: Task) => void;
   };
 }
 
